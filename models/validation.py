@@ -8,35 +8,51 @@ from torch.utils.data import DataLoader
 import os
 
 def evaluate_model():
-    # Settings
-    data_dir = os.path.abspath("split_data/val")
-    model_path = "models/sebra_classificator/final_model.pth"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # --- 1. Path & Device Settings ---
+    # Matches your folder structure: models/sebra_classifier/
+    model_path = "models/sebra_classifier/final_model.pth"
+    data_dir = "split_data/val"
+    
+    # Using CPU to bypass the "Old NVIDIA Driver" error on the cluster
+    device = torch.device("cpu")
+    print(f"Using device: {device}")
 
-    # 1. Load Data
+    # --- 2. Load Data ---
     data_transforms = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
     
+    if not os.path.exists(data_dir):
+        print(f"Error: Data directory not found at {data_dir}")
+        return
+
     val_dataset = datasets.ImageFolder(data_dir, transform=data_transforms)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    class_names = val_dataset.classes # ['n', 'y']
+    class_names = val_dataset.classes # Expected: ['n', 'y']
 
-    # 2. Load Model
+    # --- 3. Initialize Model Architecture ---
+    # We must build the 'brain' structure BEFORE loading the weights
     model = models.resnet18()
     num_ftrs = model.fc.in_features
-    model.fc = torch.nn.Linear(num_ftrs, 2)
-    model.load_state_dict(torch.load(model_path))
+    model.fc = torch.nn.Linear(num_ftrs, 2) # 2 classes: Zebra (y) vs No Zebra (n)
     model = model.to(device)
+
+    # --- 4. Load Trained Weights ---
+    if not os.path.exists(model_path):
+        print(f"Error: Model file not found at {model_path}")
+        return
+        
+    print(f"Loading weights from {model_path}...")
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
     all_preds = []
     all_labels = []
 
-    # 3. Collect Predictions
-    print("Evaluating model...")
+    # --- 5. Run Inference ---
+    print("Running validation images through the model...")
     with torch.no_grad():
         for inputs, labels in val_loader:
             inputs, labels = inputs.to(device), labels.to(device)
@@ -46,21 +62,24 @@ def evaluate_model():
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 
-    # 4. Generate Confusion Matrix
+    # --- 6. Generate & Save Confusion Matrix ---
     cm = confusion_matrix(all_labels, all_preds)
     
-    # 5. Visualize with Seaborn
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=class_names, yticklabels=class_names)
     plt.xlabel('Predicted (Model Guess)')
     plt.ylabel('Actual (Truth)')
     plt.title('Zebra Identifier Confusion Matrix')
-    plt.savefig('confusion_matrix.png')
-    print("Confusion Matrix saved as confusion_matrix.png")
+    
+    save_path = 'confusion_matrix.png'
+    plt.savefig(save_path)
+    print(f"Success! Confusion Matrix saved as {save_path}")
 
-    # 6. Detailed Report
-    print("\nClassification Report:")
+    # --- 7. Print Detailed Text Report ---
+    print("\n" + "="*30)
+    print("CLASSIFICATION REPORT")
+    print("="*30)
     print(classification_report(all_labels, all_preds, target_names=class_names))
 
 if __name__ == "__main__":
