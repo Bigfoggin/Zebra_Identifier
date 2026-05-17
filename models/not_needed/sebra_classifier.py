@@ -29,26 +29,34 @@ def main():
     train_dataset = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=data_transforms)
     val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data_transforms)
     
-    # Change this in your .py file to use the 32 CPUs you reserved:
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8)
+    # Optimized for 32 CPUs: num_workers=16 is a good balance
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=16)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=16)
 
     # --- Model Setup ---
     print(f"--- Step 3: Initializing Model ---")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = models.resnet18(pretrained=True)
+    
+    # Using the modern weights parameter (replaces pretrained=True)
+    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, 2)
     model = model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    # --- Proportional Learning Weighting ---
+    # Class 0 ('n'): 92,730 images -> Weight 1.0
+    # Class 1 ('y'): 26,160 images -> Weight 3.54 (92730 / 26160)
+    # This ensures the model treats one 'y' sample as importantly as 3.54 'n' samples.
+    weights = torch.tensor([1.0, 3.54]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # --- Checkpoint Loading (The "Resume" Logic) ---
     start_epoch = 0
     if os.path.exists(checkpoint_path):
         print(f"Found checkpoint at {checkpoint_path}. Resuming...")
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
