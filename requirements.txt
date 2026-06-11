@@ -1,17 +1,19 @@
-# Core Deep Learning
+# Deep Learning
 torch
 torchvision
-torchaudio
 
-# Data Handling & Progress
-numpy
-tqdm
+# Image Processing
 pillow
+opencv-python
 
-# Evaluation & Visualization (For Confusion Matrix)
+# Numerical Computing
+numpy
+
+# Progress Bars
+tqdm
+
+# Evaluation
 scikit-learn
-seaborn
-matplotlib
 
-# Environment Utilities
-pandas
+# Visualization
+matplotlib
